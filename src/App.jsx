@@ -28,6 +28,7 @@ const AgentOpsHackathon = () => {
   const [lastSync, setLastSync] = useState(null);
   const [milestones, setMilestones] = useState([]);
   const [editingMilestone, setEditingMilestone] = useState(null);
+  const [activeMilestoneId, setActiveMilestoneId] = useState(3); // Default to milestone 3
 
   // Admin emails - these users can edit anyone's profile
   const adminEmails = [
@@ -133,6 +134,17 @@ const AgentOpsHackathon = () => {
     return () => unsubscribe();
   }, []);
 
+  // Subscribe to active milestone
+  useEffect(() => {
+    const activeRef = ref(database, 'hackathon/activeMilestoneId');
+    const unsubscribe = onValue(activeRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setActiveMilestoneId(snapshot.val());
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   const initializeDatabase = async () => {
     try {
       const teamRef = ref(database, 'hackathon/team');
@@ -172,6 +184,20 @@ const AgentOpsHackathon = () => {
     await saveMilestones(newMilestones);
     setEditingMilestone(null);
   };
+
+  const setFeaturedMilestone = async (milestoneId) => {
+    try {
+      const activeRef = ref(database, 'hackathon/activeMilestoneId');
+      await set(activeRef, milestoneId);
+      setActiveMilestoneId(milestoneId);
+    } catch (error) {
+      console.error('Error setting active milestone:', error);
+    }
+  };
+
+  // Get the currently featured milestone
+  const currentMilestones = milestones.length > 0 ? milestones : defaultMilestones;
+  const featuredMilestone = currentMilestones.find(m => m.id === activeMilestoneId) || currentMilestones[2];
 
   // Auth handlers
   const handleLogin = async (e) => {
@@ -416,7 +442,8 @@ const AgentOpsHackathon = () => {
         </h1>
         <div style={styles.countdown}>
           <div style={styles.countdownLabel}>NEXT DEADLINE</div>
-          <div style={styles.countdownDate}>JAN 12 • DEMO PACK</div>
+          <div style={styles.countdownDate}>{featuredMilestone.date} • {featuredMilestone.title}</div>
+          <div style={styles.countdownDesc}>{featuredMilestone.desc} • +{featuredMilestone.xp} XP</div>
         </div>
         {isAdmin && <button style={styles.resetBtn} onClick={resetData}>↺ Reset All</button>}
       </header>
@@ -451,18 +478,30 @@ const AgentOpsHackathon = () => {
             {(milestones.length > 0 ? milestones : defaultMilestones).map((milestone, idx) => {
               const completedCount = membersWithStats.filter(m => m.completedMilestones?.includes(milestone.id)).length;
               const progress = membersWithStats.length > 0 ? (completedCount / membersWithStats.length) * 100 : 0;
-              const isActive = idx === 2;
+              const isFeatured = milestone.id === activeMilestoneId;
               return (
                 <div 
                   key={milestone.id} 
                   style={{
                     ...styles.milestoneCard, 
-                    ...(isActive ? styles.milestoneActive : {}), 
+                    ...(isFeatured ? styles.milestoneActive : {}), 
                     animationDelay: `${idx * 0.15}s`,
                     cursor: isAdmin ? 'pointer' : 'default'
                   }}
                   onClick={() => isAdmin && user && setEditingMilestone({...milestone})}
                 >
+                  {isAdmin && user && (
+                    <button 
+                      style={{
+                        ...styles.featureBtn,
+                        ...(isFeatured ? styles.featureBtnActive : {})
+                      }}
+                      onClick={(e) => { e.stopPropagation(); setFeaturedMilestone(milestone.id); }}
+                      title={isFeatured ? 'Currently featured' : 'Set as featured deadline'}
+                    >
+                      {isFeatured ? '⭐' : '☆'}
+                    </button>
+                  )}
                   {isAdmin && <div style={styles.milestoneEditHint}>✏️</div>}
                   <div style={styles.milestoneIcon}>{milestone.icon}</div>
                   <div style={styles.milestoneDate}>{milestone.date}</div>
@@ -818,6 +857,7 @@ const styles = {
   countdown: { marginTop: '20px', padding: '15px 30px', background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', borderRadius: '8px', display: 'inline-block' },
   countdownLabel: { fontFamily: '"Share Tech Mono", monospace', fontSize: '0.75rem', color: '#888', letterSpacing: '0.2em' },
   countdownDate: { fontFamily: '"Orbitron", sans-serif', fontSize: '1.3rem', color: '#00ff88', fontWeight: 700, animation: 'pulse 2s infinite' },
+  countdownDesc: { fontFamily: '"Rajdhani", sans-serif', fontSize: '0.85rem', color: '#888', marginTop: '5px' },
   resetBtn: { position: 'absolute', top: '20px', right: '20px', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', color: '#ff6b6b', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontFamily: '"Share Tech Mono", monospace', fontSize: '0.8rem' },
   mainGrid: { display: 'grid', gridTemplateColumns: '300px 1fr', gridTemplateRows: 'auto 1fr', gap: '25px', maxWidth: '1400px', margin: '0 auto' },
   sectionTitle: { fontFamily: '"Orbitron", sans-serif', fontSize: '1rem', fontWeight: 700, color: '#00ccff', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '10px', letterSpacing: '0.1em' },
@@ -847,6 +887,8 @@ const styles = {
   milestoneProgressBar: { height: '100%', background: 'linear-gradient(90deg, #00ff88, #00ccff)', borderRadius: '2px', transition: 'width 1s ease' },
   milestoneCount: { fontSize: '0.65rem', color: '#666' },
   milestoneEditHint: { position: 'absolute', top: '5px', right: '5px', fontSize: '0.7rem', opacity: 0.5 },
+  featureBtn: { position: 'absolute', top: '5px', left: '5px', fontSize: '1rem', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.5, transition: 'all 0.2s ease', padding: '2px' },
+  featureBtnActive: { opacity: 1, color: '#FFD700', textShadow: '0 0 10px rgba(255,215,0,0.5)' },
   milestoneInput: { width: '100%', padding: '12px 15px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(0,255,136,0.3)', borderRadius: '8px', color: '#fff', fontSize: '1rem', fontFamily: '"Rajdhani", sans-serif', boxSizing: 'border-box' },
   iconPicker: { display: 'flex', flexWrap: 'wrap', gap: '8px' },
   iconOption: { width: '45px', height: '45px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', background: 'rgba(255,255,255,0.05)', border: '2px solid transparent', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s ease' },
