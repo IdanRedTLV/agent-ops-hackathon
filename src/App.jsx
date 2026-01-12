@@ -24,6 +24,8 @@ const AgentOpsHackathon = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
   const [newWorkflow, setNewWorkflow] = useState('');
+  const [workflowMediaUrl, setWorkflowMediaUrl] = useState('');
+  const [viewingWorkflow, setViewingWorkflow] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
   const [lastSync, setLastSync] = useState(null);
   const [milestones, setMilestones] = useState([]);
@@ -345,16 +347,89 @@ const AgentOpsHackathon = () => {
     setEditingMember({ ...editingMember, completedMilestones: newCompleted });
   };
 
-  const addWorkflow = () => {
+  const addWorkflow = async () => {
     if (!newWorkflow.trim() || !editingMember) return;
+    
+    let workflowData = {
+      name: newWorkflow.trim(),
+      mediaUrl: workflowMediaUrl.trim() || null,
+      mediaType: workflowMediaUrl.trim() ? detectMediaType(workflowMediaUrl.trim()) : null,
+      createdAt: Date.now()
+    };
+    
     const currentWorkflows = editingMember.workflows || [];
-    setEditingMember({ ...editingMember, workflows: [...currentWorkflows, newWorkflow.trim()] });
+    setEditingMember({ 
+      ...editingMember, 
+      workflows: [...currentWorkflows, workflowData] 
+    });
+    
     setNewWorkflow('');
+    setWorkflowMediaUrl('');
+  };
+
+  // Detect media type from URL
+  const detectMediaType = (url) => {
+    const lowerUrl = url.toLowerCase();
+    
+    // YouTube
+    if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
+      return 'youtube';
+    }
+    // Loom
+    if (lowerUrl.includes('loom.com')) {
+      return 'loom';
+    }
+    // Vimeo
+    if (lowerUrl.includes('vimeo.com')) {
+      return 'vimeo';
+    }
+    // Google Drive
+    if (lowerUrl.includes('drive.google.com')) {
+      return 'gdrive';
+    }
+    // Direct video files
+    if (lowerUrl.match(/\.(mp4|webm|mov|avi)(\?|$)/)) {
+      return 'video';
+    }
+    // Images
+    if (lowerUrl.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/)) {
+      return 'image';
+    }
+    // Default to link
+    return 'link';
+  };
+
+  // Get embed URL for videos
+  const getEmbedUrl = (url, type) => {
+    if (type === 'youtube') {
+      const videoId = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      return videoId ? `https://www.youtube.com/embed/${videoId[1]}` : url;
+    }
+    if (type === 'loom') {
+      const loomId = url.match(/loom\.com\/share\/([a-zA-Z0-9]+)/);
+      return loomId ? `https://www.loom.com/embed/${loomId[1]}` : url;
+    }
+    if (type === 'vimeo') {
+      const vimeoId = url.match(/vimeo\.com\/(\d+)/);
+      return vimeoId ? `https://player.vimeo.com/video/${vimeoId[1]}` : url;
+    }
+    return url;
   };
 
   const removeWorkflow = (index) => {
     if (!editingMember) return;
     setEditingMember({ ...editingMember, workflows: editingMember.workflows.filter((_, i) => i !== index) });
+  };
+
+  // Helper to get workflow name (handles both old string format and new object format)
+  const getWorkflowName = (workflow) => {
+    if (typeof workflow === 'string') return workflow;
+    return workflow?.name || 'Unnamed Workflow';
+  };
+
+  const getWorkflowMedia = (workflow) => {
+    if (typeof workflow === 'string') return null;
+    return workflow?.mediaUrl ? { url: workflow.mediaUrl, type: workflow.mediaType } : null;
   };
 
   const updateStreak = (delta) => {
@@ -581,7 +656,46 @@ const AgentOpsHackathon = () => {
             </div>
             <div style={styles.modalSection}>
               <h4 style={styles.modalSectionTitle}>⚡ ACTIVE WORKFLOWS</h4>
-              <div style={styles.modalWorkflows}>{selectedMember.workflows?.length > 0 ? selectedMember.workflows.map((wf, i) => <div key={i} style={styles.modalWorkflow}><span style={styles.workflowDot}>●</span> {wf}</div>) : <span style={styles.noBadges}>No workflows yet</span>}</div>
+              <div style={styles.modalWorkflows}>
+                {selectedMember.workflows?.length > 0 ? selectedMember.workflows.map((wf, i) => {
+                  const media = getWorkflowMedia(wf);
+                  return (
+                    <div 
+                      key={i} 
+                      style={{
+                        ...styles.modalWorkflowCard,
+                        cursor: media ? 'pointer' : 'default'
+                      }}
+                      onClick={() => media && setViewingWorkflow(wf)}
+                    >
+                      {media && (
+                        <div style={styles.workflowThumbnail}>
+                          {media.type === 'image' ? (
+                            <img src={media.url} alt="" style={styles.workflowThumbMedia} />
+                          ) : (
+                            <div style={styles.workflowThumbPlaceholder}>
+                              <span style={styles.workflowThumbIcon}>
+                                {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : media.type === 'vimeo' ? '🎬' : '🔗'}
+                              </span>
+                              <span style={styles.workflowThumbLabel}>
+                                {media.type === 'youtube' ? 'YouTube' : media.type === 'loom' ? 'Loom' : media.type === 'vimeo' ? 'Vimeo' : 'View'}
+                              </span>
+                            </div>
+                          )}
+                          <div style={styles.workflowMediaIcon}>
+                            {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : media.type === 'image' ? '🖼️' : '🔗'}
+                          </div>
+                        </div>
+                      )}
+                      <div style={styles.workflowCardContent}>
+                        <span style={styles.workflowDot}>●</span>
+                        <span style={styles.workflowCardName}>{getWorkflowName(wf)}</span>
+                        {media && <span style={styles.viewMediaHint}>Click to view</span>}
+                      </div>
+                    </div>
+                  );
+                }) : <span style={styles.noBadges}>No workflows yet</span>}
+              </div>
             </div>
             <div style={styles.modalSection}>
               <h4 style={styles.modalSectionTitle}>📍 MILESTONES</h4>
@@ -627,10 +741,60 @@ const AgentOpsHackathon = () => {
             </div>
             <div style={styles.editSection}>
               <h4 style={styles.editSectionTitle}>⚡ MY WORKFLOWS</h4>
-              <div style={styles.workflowList}>{(editingMember.workflows || []).map((wf, i) => <div key={i} style={styles.workflowItem}><span>{wf}</span><button style={styles.removeWorkflowBtn} onClick={() => removeWorkflow(i)}>✕</button></div>)}</div>
-              <div style={styles.addWorkflow}>
-                <input type="text" placeholder="Add new workflow..." value={newWorkflow} onChange={(e) => setNewWorkflow(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addWorkflow()} style={styles.workflowInput} />
-                <button style={styles.addWorkflowBtn} onClick={addWorkflow}>+ Add</button>
+              <div style={styles.workflowList}>
+                {(editingMember.workflows || []).map((wf, i) => {
+                  const media = getWorkflowMedia(wf);
+                  return (
+                    <div key={i} style={styles.workflowItemWithMedia}>
+                      {media && (
+                        <div style={styles.workflowItemThumb}>
+                          {media.type === 'image' ? (
+                            <img src={media.url} alt="" style={styles.workflowItemThumbMedia} />
+                          ) : (
+                            <div style={styles.workflowItemThumbIcon}>
+                              {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : '🔗'}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <span style={styles.workflowItemName}>{getWorkflowName(wf)}</span>
+                      <button style={styles.removeWorkflowBtn} onClick={() => removeWorkflow(i)}>✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={styles.addWorkflowSection}>
+                <input 
+                  type="text" 
+                  placeholder="Workflow name..." 
+                  value={newWorkflow} 
+                  onChange={(e) => setNewWorkflow(e.target.value)} 
+                  style={styles.workflowInput} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="🔗 Media URL (YouTube, Loom, image link - optional)" 
+                  value={workflowMediaUrl} 
+                  onChange={(e) => setWorkflowMediaUrl(e.target.value)} 
+                  style={styles.workflowUrlInput} 
+                />
+                {workflowMediaUrl && (
+                  <div style={styles.mediaPreviewHint}>
+                    {detectMediaType(workflowMediaUrl) === 'youtube' && '📺 YouTube video detected'}
+                    {detectMediaType(workflowMediaUrl) === 'loom' && '🎥 Loom video detected'}
+                    {detectMediaType(workflowMediaUrl) === 'vimeo' && '🎬 Vimeo video detected'}
+                    {detectMediaType(workflowMediaUrl) === 'image' && '🖼️ Image detected'}
+                    {detectMediaType(workflowMediaUrl) === 'video' && '🎬 Video detected'}
+                    {detectMediaType(workflowMediaUrl) === 'gdrive' && '📁 Google Drive link detected'}
+                    {detectMediaType(workflowMediaUrl) === 'link' && '🔗 Link added'}
+                  </div>
+                )}
+                <button 
+                  style={styles.addWorkflowBtn} 
+                  onClick={addWorkflow}
+                >
+                  + Add Workflow
+                </button>
               </div>
             </div>
             <div style={styles.editActions}>
@@ -789,6 +953,74 @@ const AgentOpsHackathon = () => {
         </div>
       )}
 
+      {/* Workflow Media Viewer Modal */}
+      {viewingWorkflow && (
+        <div style={styles.modalOverlay} onClick={() => setViewingWorkflow(null)}>
+          <div style={styles.mediaViewerModal} onClick={e => e.stopPropagation()}>
+            <button style={styles.modalClose} onClick={() => setViewingWorkflow(null)}>✕</button>
+            <h3 style={styles.mediaViewerTitle}>{getWorkflowName(viewingWorkflow)}</h3>
+            <div style={styles.mediaViewerContent}>
+              {(() => {
+                const media = getWorkflowMedia(viewingWorkflow);
+                if (!media) return null;
+                
+                // YouTube, Loom, Vimeo - use iframe embed
+                if (['youtube', 'loom', 'vimeo'].includes(media.type)) {
+                  return (
+                    <iframe
+                      src={getEmbedUrl(media.url, media.type)}
+                      style={styles.mediaViewerIframe}
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      title={getWorkflowName(viewingWorkflow)}
+                    />
+                  );
+                }
+                
+                // Direct video file
+                if (media.type === 'video') {
+                  return (
+                    <video 
+                      src={media.url} 
+                      style={styles.mediaViewerVideo}
+                      controls
+                      autoPlay
+                    />
+                  );
+                }
+                
+                // Image
+                if (media.type === 'image') {
+                  return (
+                    <img 
+                      src={media.url} 
+                      alt={getWorkflowName(viewingWorkflow)}
+                      style={styles.mediaViewerImage}
+                    />
+                  );
+                }
+                
+                // Google Drive or other links - show link button
+                return (
+                  <div style={styles.mediaViewerLink}>
+                    <a 
+                      href={media.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={styles.mediaViewerLinkBtn}
+                    >
+                      🔗 Open Link
+                    </a>
+                    <p style={styles.mediaViewerLinkHint}>Opens in new tab</p>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       <footer style={styles.footer}>
         <div style={styles.footerStat}><span style={styles.footerValue}>{membersWithStats.length}</span><span style={styles.footerLabel}>AGENTS</span></div>
         <div style={styles.footerStat}><span style={styles.footerValue}>{membersWithStats.reduce((a, m) => a + (m.workflows?.length || 0), 0)}</span><span style={styles.footerLabel}>WORKFLOWS</span></div>
@@ -938,9 +1170,36 @@ const styles = {
   modalBadgeIcon: { fontSize: '1.2rem' },
   modalBadgeName: { fontSize: '0.8rem', color: '#ccc' },
   noBadges: { color: '#555', fontSize: '0.85rem', fontStyle: 'italic' },
-  modalWorkflows: { display: 'flex', flexDirection: 'column', gap: '8px' },
+  modalWorkflows: { display: 'flex', flexDirection: 'column', gap: '10px' },
   modalWorkflow: { fontSize: '0.9rem', color: '#e0e0e0', display: 'flex', alignItems: 'center', gap: '8px' },
+  modalWorkflowCard: { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '10px', transition: 'all 0.2s ease' },
+  workflowThumbnail: { width: '100%', height: '120px', borderRadius: '6px', overflow: 'hidden', marginBottom: '8px', position: 'relative', background: 'rgba(0,0,0,0.3)' },
+  workflowThumbMedia: { width: '100%', height: '100%', objectFit: 'cover' },
+  workflowThumbPlaceholder: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, rgba(0,204,255,0.1) 0%, rgba(0,255,136,0.1) 100%)' },
+  workflowThumbIcon: { fontSize: '2rem', marginBottom: '5px' },
+  workflowThumbLabel: { fontSize: '0.75rem', color: '#888' },
+  workflowMediaIcon: { position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.7)', borderRadius: '4px', padding: '2px 6px', fontSize: '0.8rem' },
+  workflowCardContent: { display: 'flex', alignItems: 'center', gap: '8px' },
+  workflowCardName: { flex: 1, fontSize: '0.9rem', color: '#e0e0e0' },
+  viewMediaHint: { fontSize: '0.7rem', color: '#00ccff', opacity: 0.7 },
   workflowDot: { color: '#00ff88', fontSize: '0.6rem' },
+  workflowItemWithMedia: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px' },
+  workflowItemThumb: { width: '50px', height: '50px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  workflowItemThumbMedia: { width: '100%', height: '100%', objectFit: 'cover' },
+  workflowItemThumbIcon: { fontSize: '1.5rem' },
+  workflowItemName: { flex: 1, fontSize: '0.9rem', color: '#e0e0e0' },
+  addWorkflowSection: { display: 'flex', flexDirection: 'column', gap: '10px' },
+  workflowUrlInput: { padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(0,204,255,0.2)', borderRadius: '6px', color: '#fff', fontSize: '0.85rem', fontFamily: '"Rajdhani", sans-serif' },
+  mediaPreviewHint: { fontSize: '0.8rem', color: '#00ff88', padding: '8px 12px', background: 'rgba(0,255,136,0.1)', borderRadius: '6px' },
+  mediaViewerModal: { background: 'linear-gradient(145deg, #1a1a2e 0%, #0f0f1a 100%)', border: '2px solid #00ff88', borderRadius: '16px', padding: '20px', maxWidth: '900px', width: '95%', maxHeight: '90vh', overflow: 'auto', position: 'relative', boxShadow: '0 0 60px rgba(0,255,136,0.3)' },
+  mediaViewerTitle: { fontFamily: '"Orbitron", sans-serif', fontSize: '1.2rem', color: '#00ff88', margin: '0 0 15px 0', textAlign: 'center' },
+  mediaViewerContent: { display: 'flex', justifyContent: 'center', alignItems: 'center' },
+  mediaViewerImage: { maxWidth: '100%', maxHeight: '70vh', borderRadius: '8px' },
+  mediaViewerVideo: { maxWidth: '100%', maxHeight: '70vh', borderRadius: '8px' },
+  mediaViewerIframe: { width: '100%', height: '500px', borderRadius: '8px', border: 'none' },
+  mediaViewerLink: { textAlign: 'center', padding: '40px' },
+  mediaViewerLinkBtn: { display: 'inline-block', padding: '15px 30px', background: 'linear-gradient(90deg, #00ff88, #00ccff)', color: '#0a0a0f', textDecoration: 'none', borderRadius: '8px', fontFamily: '"Orbitron", sans-serif', fontWeight: 700, fontSize: '1.1rem' },
+  mediaViewerLinkHint: { marginTop: '15px', color: '#888', fontSize: '0.85rem' },
   modalMilestones: { display: 'flex', flexDirection: 'column', gap: '8px' },
   modalMilestone: { display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' },
   milestoneXPSmall: { marginLeft: 'auto', color: '#00ff88', fontSize: '0.75rem', fontFamily: '"Share Tech Mono", monospace' },
