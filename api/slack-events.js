@@ -63,7 +63,7 @@ export default async function handler(req, res) {
 }
 
 async function processWorkflowMessage(event) {
-  const { user: slackUserId, text, ts, channel } = event;
+  const { user: slackUserId, text, ts, channel, files } = event;
 
   // Get user info from Slack
   const userInfo = await fetchSlackUser(slackUserId);
@@ -83,17 +83,21 @@ async function processWorkflowMessage(event) {
   const workflowName = extractWorkflowName(text);
   const slackThreadUrl = `https://tap-mobile.slack.com/archives/${channel}/p${ts.replace('.', '')}`;
 
+  // Extract attachments from message
+  const attachments = extractAttachments(files);
+
   const workflowData = {
     name: workflowName,
     mediaUrl: slackThreadUrl,
     mediaType: 'slack',
     createdAt: Date.now(),
+    attachments: attachments.length > 0 ? attachments : undefined,
   };
 
   // Add workflow to team member's profile
   await addWorkflowToMember(teamMember.id, workflowData);
 
-  console.log(`✅ Auto-added workflow for ${teamMember.name}: ${workflowName}`);
+  console.log(`✅ Auto-added workflow for ${teamMember.name}: ${workflowName} (${attachments.length} attachments)`);
 }
 
 async function fetchSlackUser(userId) {
@@ -162,6 +166,23 @@ function extractWorkflowName(text) {
   }
 
   return workflowName || 'Slack Workflow';
+}
+
+function extractAttachments(files) {
+  if (!files || !Array.isArray(files)) {
+    return [];
+  }
+
+  return files.map(file => ({
+    id: file.id,
+    name: file.name,
+    title: file.title,
+    mimetype: file.mimetype,
+    filetype: file.filetype,
+    url: file.url_private || file.permalink,
+    thumbnail: file.thumb_360 || file.thumb_160 || file.thumb_80,
+    size: file.size,
+  }));
 }
 
 async function addWorkflowToMember(memberId, workflowData) {

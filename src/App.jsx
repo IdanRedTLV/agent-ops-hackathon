@@ -771,7 +771,12 @@ const AgentOpsHackathon = () => {
                       <div style={styles.workflowCardContent}>
                         <span style={styles.workflowDot}>●</span>
                         <span style={styles.workflowCardName}>{getWorkflowName(wf)}</span>
-                        {media && <span style={styles.viewMediaHint}>Click to view</span>}
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                          {wf.attachments && wf.attachments.length > 0 && (
+                            <span style={styles.attachmentBadge}>📎 {wf.attachments.length}</span>
+                          )}
+                          {media && <span style={styles.viewMediaHint}>Click to view</span>}
+                        </div>
                       </div>
                     </div>
                   );
@@ -1152,6 +1157,40 @@ const AgentOpsHackathon = () => {
                             </div>
                           ))}
                         </div>
+                        {viewingWorkflow.attachments && viewingWorkflow.attachments.length > 0 && (
+                          <div style={styles.slackAttachmentsSection}>
+                            <h4 style={styles.slackAttachmentsTitle}>📎 Attachments ({viewingWorkflow.attachments.length})</h4>
+                            <div style={styles.slackAttachments}>
+                              {viewingWorkflow.attachments.map((attachment, idx) => (
+                                <a
+                                  key={idx}
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={styles.slackAttachment}
+                                >
+                                  {attachment.thumbnail ? (
+                                    <img src={attachment.thumbnail} alt={attachment.name} style={styles.slackAttachmentThumb} />
+                                  ) : (
+                                    <div style={styles.slackAttachmentIcon}>
+                                      {attachment.filetype === 'pdf' ? '📄' :
+                                       attachment.filetype === 'video' ? '🎥' :
+                                       attachment.filetype === 'audio' ? '🎵' :
+                                       '📎'}
+                                    </div>
+                                  )}
+                                  <div style={styles.slackAttachmentInfo}>
+                                    <div style={styles.slackAttachmentName}>{attachment.name || attachment.title}</div>
+                                    <div style={styles.slackAttachmentMeta}>
+                                      {attachment.filetype && <span>{attachment.filetype.toUpperCase()}</span>}
+                                      {attachment.size && <span> • {(attachment.size / 1024).toFixed(0)} KB</span>}
+                                    </div>
+                                  </div>
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   }
@@ -1353,6 +1392,7 @@ const styles = {
   workflowCardContent: { display: 'flex', alignItems: 'center', gap: '8px' },
   workflowCardName: { flex: 1, fontSize: '0.9rem', color: '#e0e0e0' },
   viewMediaHint: { fontSize: '0.7rem', color: '#00ccff', opacity: 0.7 },
+  attachmentBadge: { fontSize: '0.7rem', color: '#00ff88', background: 'rgba(0,255,136,0.1)', padding: '2px 6px', borderRadius: '8px', fontWeight: 600 },
   workflowDot: { color: '#00ff88', fontSize: '0.6rem' },
   workflowItemWithMedia: { display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px' },
   workflowItemThumb: { width: '50px', height: '50px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' },
@@ -1422,6 +1462,17 @@ const styles = {
   slackUsername: { fontWeight: 600, color: '#fff', fontSize: '0.95rem' },
   slackTimestamp: { fontSize: '0.75rem', color: '#666' },
   slackMessageText: { color: '#e0e0e0', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' },
+
+  // Slack attachments styles
+  slackAttachmentsSection: { marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)' },
+  slackAttachmentsTitle: { fontSize: '0.95rem', color: '#00ccff', marginBottom: '15px', fontWeight: 600 },
+  slackAttachments: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' },
+  slackAttachment: { display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '10px', textDecoration: 'none', transition: 'all 0.2s ease', cursor: 'pointer' },
+  slackAttachmentThumb: { width: '100%', height: '120px', objectFit: 'cover', borderRadius: '6px', marginBottom: '8px' },
+  slackAttachmentIcon: { width: '100%', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', background: 'rgba(0,204,255,0.1)', borderRadius: '6px', marginBottom: '8px' },
+  slackAttachmentInfo: { display: 'flex', flexDirection: 'column', gap: '4px' },
+  slackAttachmentName: { fontSize: '0.85rem', color: '#fff', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  slackAttachmentMeta: { fontSize: '0.7rem', color: '#666' },
 };
 
 export default AgentOpsHackathon;
