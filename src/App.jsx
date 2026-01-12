@@ -17,6 +17,7 @@ const AgentOpsHackathon = () => {
   const [authError, setAuthError] = useState('');
   const [authMode, setAuthMode] = useState('login'); // 'login', 'signup', 'reset'
   const [authSuccess, setAuthSuccess] = useState('');
+  const [showLoginModal, setShowLoginModal] = useState(false);
   
   const [selectedMember, setSelectedMember] = useState(null);
   const [editingMember, setEditingMember] = useState(null);
@@ -178,6 +179,9 @@ const AgentOpsHackathon = () => {
     setAuthError('');
     try {
       await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+      setShowLoginModal(false);
+      setLoginEmail('');
+      setLoginPassword('');
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
         setAuthError('No account found. Please sign up first.');
@@ -195,6 +199,9 @@ const AgentOpsHackathon = () => {
     try {
       await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
       setAuthSuccess('Account created! You are now logged in.');
+      setShowLoginModal(false);
+      setLoginEmail('');
+      setLoginPassword('');
     } catch (error) {
       if (error.code === 'auth/email-already-in-use') {
         setAuthError('Email already in use. Try logging in.');
@@ -224,6 +231,15 @@ const AgentOpsHackathon = () => {
     } catch (error) {
       console.error('Error signing out:', error);
     }
+  };
+
+  // Helper to require login before an action
+  const requireLogin = (action) => {
+    if (!user) {
+      setShowLoginModal(true);
+      return false;
+    }
+    return true;
   };
 
   // Find the current user's team member profile
@@ -334,85 +350,12 @@ const AgentOpsHackathon = () => {
     }
   };
 
-  // Login Screen
+  // Login Screen - now only shown as modal
   if (authLoading) {
     return (
       <div style={styles.loadingScreen}>
         <style>{keyframes}</style>
-        <div style={styles.loadingText}>AUTHENTICATING...</div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div style={styles.loginContainer}>
-        <style>{keyframes}</style>
-        <div style={styles.scanlines} />
-        <div style={styles.loginBox}>
-          <div style={styles.loginHeader}>
-            <h1 style={styles.loginTitle}>AGENT OPS</h1>
-            <p style={styles.loginSubtitle}>HACKATHON 2025</p>
-          </div>
-          
-          <form onSubmit={authMode === 'login' ? handleLogin : authMode === 'signup' ? handleSignup : handlePasswordReset}>
-            <div style={styles.inputGroup}>
-              <label style={styles.inputLabel}>EMAIL</label>
-              <input
-                type="email"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                style={styles.input}
-                placeholder="your@email.com"
-                required
-              />
-            </div>
-            
-            {authMode !== 'reset' && (
-              <div style={styles.inputGroup}>
-                <label style={styles.inputLabel}>PASSWORD</label>
-                <input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  style={styles.input}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
-              </div>
-            )}
-            
-            {authError && <div style={styles.authError}>{authError}</div>}
-            {authSuccess && <div style={styles.authSuccess}>{authSuccess}</div>}
-            
-            <button type="submit" style={styles.loginBtn}>
-              {authMode === 'login' ? '🚀 LOGIN' : authMode === 'signup' ? '✨ CREATE ACCOUNT' : '📧 SEND RESET EMAIL'}
-            </button>
-          </form>
-
-          <div style={styles.authLinks}>
-            {authMode === 'login' ? (
-              <>
-                <button style={styles.authLink} onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthSuccess(''); }}>
-                  Need an account? Sign up
-                </button>
-                <button style={styles.authLink} onClick={() => { setAuthMode('reset'); setAuthError(''); setAuthSuccess(''); }}>
-                  Forgot password?
-                </button>
-              </>
-            ) : (
-              <button style={styles.authLink} onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }}>
-                ← Back to login
-              </button>
-            )}
-          </div>
-
-          <div style={styles.loginNote}>
-            Sign in with any email to access the tracker.<br/>
-            Then claim your profile from the team list.
-          </div>
-        </div>
+        <div style={styles.loadingText}>LOADING...</div>
       </div>
     );
   }
@@ -435,18 +378,28 @@ const AgentOpsHackathon = () => {
       {/* User bar */}
       <div style={styles.userBar}>
         <div style={styles.userInfo}>
-          <span style={styles.userEmail}>👤 {user.email}</span>
-          {isAdmin && <span style={styles.adminBadge}>ADMIN</span>}
-          {currentUserMember && (
-            <span style={styles.userProfile}>
-              {currentUserMember.avatar} {currentUserMember.name}
-            </span>
-          )}
-          {!currentUserMember && !isAdmin && (
-            <span style={styles.claimHint}>⚠️ Claim your profile below</span>
+          {user ? (
+            <>
+              <span style={styles.userEmail}>👤 {user.email}</span>
+              {isAdmin && <span style={styles.adminBadge}>ADMIN</span>}
+              {currentUserMember && (
+                <span style={styles.userProfile}>
+                  {currentUserMember.avatar} {currentUserMember.name}
+                </span>
+              )}
+              {!currentUserMember && !isAdmin && (
+                <span style={styles.claimHint}>⚠️ Claim your profile below</span>
+              )}
+            </>
+          ) : (
+            <span style={styles.guestText}>👁️ Viewing as guest</span>
           )}
         </div>
-        <button style={styles.signOutBtn} onClick={handleSignOut}>Sign Out</button>
+        {user ? (
+          <button style={styles.signOutBtn} onClick={handleSignOut}>Sign Out</button>
+        ) : (
+          <button style={styles.signInBtn} onClick={() => setShowLoginModal(true)}>Sign In</button>
+        )}
       </div>
       
       <div style={{...styles.connectionStatus, background: isConnected ? 'rgba(0,255,136,0.1)' : 'rgba(255,100,100,0.1)', borderColor: isConnected ? 'rgba(0,255,136,0.3)' : 'rgba(255,100,100,0.3)', color: isConnected ? '#00ff88' : '#ff6b6b'}}>
@@ -459,7 +412,7 @@ const AgentOpsHackathon = () => {
         <div style={styles.headerGlow} />
         <h1 style={styles.title}>
           <span style={styles.titleGlitch}>AGENT OPS</span>
-          <span style={styles.titleSub}>HACKATHON 2025</span>
+          <span style={styles.titleSub}>HACKATHON 2026</span>
         </h1>
         <div style={styles.countdown}>
           <div style={styles.countdownLabel}>NEXT DEADLINE</div>
@@ -508,7 +461,7 @@ const AgentOpsHackathon = () => {
                     animationDelay: `${idx * 0.15}s`,
                     cursor: isAdmin ? 'pointer' : 'default'
                   }}
-                  onClick={() => isAdmin && setEditingMilestone({...milestone})}
+                  onClick={() => isAdmin && user && setEditingMilestone({...milestone})}
                 >
                   {isAdmin && <div style={styles.milestoneEditHint}>✏️</div>}
                   <div style={styles.milestoneIcon}>{milestone.icon}</div>
@@ -525,7 +478,7 @@ const AgentOpsHackathon = () => {
         </section>
 
         <section style={styles.teamSection}>
-          <h2 style={styles.sectionTitle}><span style={styles.sectionIcon}>👾</span> SQUAD STATUS<span style={styles.sectionHint}>{currentUserMember ? 'Click your card to update' : 'Claim your profile to edit'}</span></h2>
+          <h2 style={styles.sectionTitle}><span style={styles.sectionIcon}>👾</span> SQUAD STATUS<span style={styles.sectionHint}>{user ? (currentUserMember ? 'Click your card to update' : 'Claim your profile to edit') : 'Sign in to claim your profile'}</span></h2>
           <div style={styles.teamGrid}>
             {membersWithStats.map((member, idx) => {
               const ownsProfile = isOwner(member);
@@ -552,12 +505,12 @@ const AgentOpsHackathon = () => {
                   <div style={styles.workflowCount}>{member.workflows?.length || 0} workflows active</div>
                   <div style={styles.cardActions}>
                     <button style={styles.viewBtn} onClick={() => setSelectedMember(member)}>View</button>
-                    {canEditMember ? (
+                    {user && canEditMember ? (
                       <button style={ownsProfile ? styles.updateBtn : styles.adminEditBtn} onClick={() => { const baseMember = teamMembers.find(m => m.id === member.id); setEditingMember({...baseMember}); }}>
                         {ownsProfile ? 'Update Status' : '✏️ Edit'}
                       </button>
                     ) : !isClaimed ? (
-                      <button style={styles.claimBtn} onClick={() => claimProfile(member)}>Claim Profile</button>
+                      <button style={styles.claimBtn} onClick={() => { if (requireLogin()) claimProfile(member); }}>Claim Profile</button>
                     ) : (
                       <button style={styles.disabledBtn} disabled>Claimed</button>
                     )}
@@ -595,7 +548,7 @@ const AgentOpsHackathon = () => {
               <h4 style={styles.modalSectionTitle}>📍 MILESTONES</h4>
               <div style={styles.modalMilestones}>{(milestones.length > 0 ? milestones : defaultMilestones).map(m => <div key={m.id} style={{...styles.modalMilestone, opacity: selectedMember.completedMilestones?.includes(m.id) ? 1 : 0.4}}><span>{selectedMember.completedMilestones?.includes(m.id) ? '✅' : '⬜'}</span><span>{m.title}</span><span style={styles.milestoneXPSmall}>+{m.xp} XP</span></div>)}</div>
             </div>
-            {canEdit(selectedMember) && (
+            {user && canEdit(selectedMember) && (
               <button style={styles.editFromViewBtn} onClick={() => { const baseMember = teamMembers.find(m => m.id === selectedMember.id); setEditingMember({...baseMember}); setSelectedMember(null); }}>
                 {isOwner(selectedMember) ? '✏️ Update My Status' : '✏️ Edit (Admin)'}
               </button>
@@ -644,6 +597,72 @@ const AgentOpsHackathon = () => {
             <div style={styles.editActions}>
               <button style={styles.cancelBtn} onClick={() => setEditingMember(null)}>Cancel</button>
               <button style={styles.saveBtn} onClick={saveEdits}>💾 Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowLoginModal(false)}>
+          <div style={styles.loginModalBox} onClick={e => e.stopPropagation()}>
+            <button style={styles.modalClose} onClick={() => setShowLoginModal(false)}>✕</button>
+            <div style={styles.loginHeader}>
+              <h1 style={styles.loginModalTitle}>SIGN IN</h1>
+              <p style={styles.loginModalSubtitle}>to claim your profile & track progress</p>
+            </div>
+            
+            <form onSubmit={authMode === 'login' ? handleLogin : authMode === 'signup' ? handleSignup : handlePasswordReset}>
+              <div style={styles.inputGroup}>
+                <label style={styles.inputLabel}>EMAIL</label>
+                <input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  style={styles.input}
+                  placeholder="your@email.com"
+                  required
+                />
+              </div>
+              
+              {authMode !== 'reset' && (
+                <div style={styles.inputGroup}>
+                  <label style={styles.inputLabel}>PASSWORD</label>
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    style={styles.input}
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                  />
+                </div>
+              )}
+              
+              {authError && <div style={styles.authError}>{authError}</div>}
+              {authSuccess && <div style={styles.authSuccess}>{authSuccess}</div>}
+              
+              <button type="submit" style={styles.loginBtn}>
+                {authMode === 'login' ? '🚀 LOGIN' : authMode === 'signup' ? '✨ CREATE ACCOUNT' : '📧 SEND RESET EMAIL'}
+              </button>
+            </form>
+
+            <div style={styles.authLinks}>
+              {authMode === 'login' ? (
+                <>
+                  <button style={styles.authLink} onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthSuccess(''); }}>
+                    Need an account? Sign up
+                  </button>
+                  <button style={styles.authLink} onClick={() => { setAuthMode('reset'); setAuthError(''); setAuthSuccess(''); }}>
+                    Forgot password?
+                  </button>
+                </>
+              ) : (
+                <button style={styles.authLink} onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }}>
+                  ← Back to login
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -757,7 +776,7 @@ const styles = {
   loginBox: { background: 'rgba(20, 20, 35, 0.9)', border: '2px solid #00ff88', borderRadius: '16px', padding: '40px', maxWidth: '400px', width: '90%', boxShadow: '0 0 60px rgba(0,255,136,0.2)' },
   loginHeader: { textAlign: 'center', marginBottom: '30px' },
   loginTitle: { fontFamily: '"Orbitron", sans-serif', fontSize: '2.5rem', fontWeight: 900, background: 'linear-gradient(90deg, #00ff88, #00ccff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 },
-  loginSubtitle: { fontFamily: '"Share Tech Mono", monospace', fontSize: '1rem', color: '#00ff88', letterSpacing: '0.3em', marginTop: '5px' },
+  loginSubtitle: { fontFamily: '"Share Tech Mono", monospace', fontSize: '1rem', color: '#00ff88', letterSpacing: '0.3em', marginTop: '5px', content: '"HACKATHON 2026"' },
   inputGroup: { marginBottom: '20px' },
   inputLabel: { display: 'block', fontFamily: '"Share Tech Mono", monospace', fontSize: '0.75rem', color: '#00ccff', marginBottom: '8px', letterSpacing: '0.1em' },
   input: { width: '100%', padding: '12px 15px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(0,255,136,0.3)', borderRadius: '8px', color: '#fff', fontSize: '1rem', fontFamily: '"Rajdhani", sans-serif', boxSizing: 'border-box' },
@@ -775,6 +794,11 @@ const styles = {
   userProfile: { fontFamily: '"Rajdhani", sans-serif', fontSize: '0.9rem', color: '#00ff88', fontWeight: 600 },
   claimHint: { fontSize: '0.8rem', color: '#ff6b35' },
   signOutBtn: { padding: '8px 16px', background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', borderRadius: '6px', color: '#ff6b6b', cursor: 'pointer', fontFamily: '"Share Tech Mono", monospace', fontSize: '0.8rem' },
+  signInBtn: { padding: '8px 20px', background: 'linear-gradient(90deg, #00ff88, #00ccff)', border: 'none', borderRadius: '6px', color: '#0a0a0f', cursor: 'pointer', fontFamily: '"Orbitron", sans-serif', fontSize: '0.8rem', fontWeight: 700 },
+  guestText: { fontFamily: '"Share Tech Mono", monospace', fontSize: '0.85rem', color: '#888' },
+  loginModalBox: { background: 'linear-gradient(145deg, #1a1a2e 0%, #0f0f1a 100%)', border: '2px solid #00ff88', borderRadius: '16px', padding: '30px', maxWidth: '400px', width: '90%', position: 'relative', boxShadow: '0 0 60px rgba(0,255,136,0.3)' },
+  loginModalTitle: { fontFamily: '"Orbitron", sans-serif', fontSize: '1.8rem', fontWeight: 900, color: '#00ff88', margin: 0, textAlign: 'center' },
+  loginModalSubtitle: { fontFamily: '"Rajdhani", sans-serif', fontSize: '0.9rem', color: '#888', marginTop: '5px', textAlign: 'center' },
   youBadge: { background: '#00ff88', color: '#0a0a0f', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 700, marginLeft: '8px', verticalAlign: 'middle' },
   adminBadge: { background: 'linear-gradient(90deg, #ff00ff, #00ccff)', color: '#fff', padding: '3px 8px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, marginLeft: '10px', fontFamily: '"Orbitron", sans-serif' },
 
