@@ -981,7 +981,6 @@ const AgentOpsHackathon = () => {
         <div style={styles.modalOverlay} onClick={() => setViewingWorkflow(null)}>
           <div style={styles.mediaViewerModal} onClick={e => e.stopPropagation()}>
             <button style={styles.modalClose} onClick={() => setViewingWorkflow(null)}>✕</button>
-            <h3 style={styles.mediaViewerTitle}>{getWorkflowName(viewingWorkflow)}</h3>
             <div style={styles.mediaViewerContent}>
               {(() => {
                 const media = getWorkflowMedia(viewingWorkflow);
@@ -1057,6 +1056,7 @@ const AgentOpsHackathon = () => {
                 );
               })()}
             </div>
+            <h3 style={styles.mediaViewerTitle}>{getWorkflowName(viewingWorkflow)}</h3>
           </div>
         </div>
       )}
@@ -1232,7 +1232,7 @@ const styles = {
   workflowUrlInput: { padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(0,204,255,0.2)', borderRadius: '6px', color: '#fff', fontSize: '0.85rem', fontFamily: '"Rajdhani", sans-serif' },
   mediaPreviewHint: { fontSize: '0.8rem', color: '#00ff88', padding: '8px 12px', background: 'rgba(0,255,136,0.1)', borderRadius: '6px' },
   mediaViewerModal: { background: 'linear-gradient(145deg, #1a1a2e 0%, #0f0f1a 100%)', border: '2px solid #00ff88', borderRadius: '16px', padding: '20px', maxWidth: '900px', width: '95%', maxHeight: '90vh', overflow: 'auto', position: 'relative', boxShadow: '0 0 60px rgba(0,255,136,0.3)' },
-  mediaViewerTitle: { fontFamily: '"Orbitron", sans-serif', fontSize: '1.2rem', color: '#00ff88', margin: '0 0 15px 0', textAlign: 'center' },
+  mediaViewerTitle: { fontFamily: '"Orbitron", sans-serif', fontSize: '1.2rem', color: '#00ff88', margin: '15px 0 0 0', textAlign: 'center' },
   mediaViewerContent: { display: 'flex', justifyContent: 'center', alignItems: 'center' },
   mediaViewerImage: { maxWidth: '100%', maxHeight: '70vh', borderRadius: '8px' },
   mediaViewerVideo: { maxWidth: '100%', maxHeight: '70vh', borderRadius: '8px' },
