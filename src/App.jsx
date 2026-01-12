@@ -26,6 +26,8 @@ const AgentOpsHackathon = () => {
   const [newWorkflow, setNewWorkflow] = useState('');
   const [workflowMediaUrl, setWorkflowMediaUrl] = useState('');
   const [viewingWorkflow, setViewingWorkflow] = useState(null);
+  const [slackThread, setSlackThread] = useState(null);
+  const [loadingSlackThread, setLoadingSlackThread] = useState(false);
   const [teamMembers, setTeamMembers] = useState([]);
   const [lastSync, setLastSync] = useState(null);
   const [milestones, setMilestones] = useState([]);
@@ -146,6 +148,20 @@ const AgentOpsHackathon = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  // Fetch Slack thread when viewing a Slack workflow
+  useEffect(() => {
+    if (viewingWorkflow) {
+      const media = getWorkflowMedia(viewingWorkflow);
+      if (media && media.type === 'slack') {
+        fetchSlackThread(media.url);
+      } else {
+        setSlackThread(null);
+      }
+    } else {
+      setSlackThread(null);
+    }
+  }, [viewingWorkflow]);
 
   const initializeDatabase = async () => {
     try {
@@ -432,6 +448,51 @@ const AgentOpsHackathon = () => {
     }
     // Vimeo thumbnails require API call, so we'll just show a placeholder
     return null;
+  };
+
+  // Parse Slack URL to extract channel and timestamp
+  const parseSlackUrl = (url) => {
+    // Format: https://[workspace].slack.com/archives/[CHANNEL_ID]/p[TIMESTAMP]
+    const match = url.match(/slack\.com\/archives\/([A-Z0-9]+)\/p(\d+)/);
+    if (match) {
+      return {
+        channel: match[1],
+        ts: match[2].slice(0, 10) + '.' + match[2].slice(10), // Convert p1234567890123456 to 1234567890.123456
+      };
+    }
+    return null;
+  };
+
+  // Fetch Slack thread from our API
+  const fetchSlackThread = async (url) => {
+    const parsed = parseSlackUrl(url);
+    if (!parsed) {
+      console.error('Invalid Slack URL');
+      return null;
+    }
+
+    setLoadingSlackThread(true);
+    try {
+      const response = await fetch(
+        `/api/slack-thread?channel=${parsed.channel}&ts=${parsed.ts}`
+      );
+      const data = await response.json();
+
+      if (data.success) {
+        setSlackThread(data);
+        return data;
+      } else {
+        console.error('Failed to fetch Slack thread:', data.error);
+        setSlackThread({ error: data.error });
+        return null;
+      }
+    } catch (error) {
+      console.error('Error fetching Slack thread:', error);
+      setSlackThread({ error: 'Failed to load thread' });
+      return null;
+    } finally {
+      setLoadingSlackThread(false);
+    }
   };
 
   const removeWorkflow = (index) => {
@@ -1023,8 +1084,78 @@ const AgentOpsHackathon = () => {
                   );
                 }
 
-                // Slack media - show link button with Slack branding
+                // Slack media - show thread discussion
                 if (media.type === 'slack') {
+                  if (loadingSlackThread) {
+                    return (
+                      <div style={styles.slackThreadLoading}>
+                        <div style={styles.loadingSpinner}>⏳</div>
+                        <p>Loading Slack thread...</p>
+                      </div>
+                    );
+                  }
+
+                  if (slackThread && slackThread.error) {
+                    return (
+                      <div style={styles.slackThreadError}>
+                        <p style={styles.errorTitle}>⚠️ Failed to load thread</p>
+                        <p style={styles.errorMessage}>{slackThread.error}</p>
+                        <a
+                          href={media.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={styles.mediaViewerLinkBtn}
+                        >
+                          💬 Open in Slack
+                        </a>
+                      </div>
+                    );
+                  }
+
+                  if (slackThread && slackThread.messages) {
+                    return (
+                      <div style={styles.slackThreadContainer}>
+                        <div style={styles.slackThreadHeader}>
+                          <span style={styles.slackThreadBadge}>💬 Slack Thread</span>
+                          <a
+                            href={media.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={styles.slackOpenLink}
+                          >
+                            Open in Slack ↗
+                          </a>
+                        </div>
+                        <div style={styles.slackMessages}>
+                          {slackThread.messages.map((msg, idx) => (
+                            <div key={idx} style={styles.slackMessage}>
+                              <div style={styles.slackMessageHeader}>
+                                {msg.user.avatar ? (
+                                  <img
+                                    src={msg.user.avatar}
+                                    alt={msg.user.name}
+                                    style={styles.slackAvatar}
+                                  />
+                                ) : (
+                                  <div style={styles.slackAvatarPlaceholder}>
+                                    {msg.user.display_name?.[0] || '?'}
+                                  </div>
+                                )}
+                                <div style={styles.slackMessageInfo}>
+                                  <span style={styles.slackUsername}>{msg.user.display_name || msg.user.name}</span>
+                                  <span style={styles.slackTimestamp}>
+                                    {new Date(parseFloat(msg.timestamp) * 1000).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                              <div style={styles.slackMessageText}>{msg.text}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div style={styles.mediaViewerLink}>
                       <a
@@ -1271,6 +1402,26 @@ const styles = {
   footerStat: { textAlign: 'center' },
   footerValue: { fontFamily: '"Orbitron", sans-serif', fontSize: '2rem', fontWeight: 700, color: '#00ff88', display: 'block' },
   footerLabel: { fontFamily: '"Share Tech Mono", monospace', fontSize: '0.7rem', color: '#555', letterSpacing: '0.2em' },
+
+  // Slack thread styles
+  slackThreadLoading: { textAlign: 'center', padding: '40px', color: '#888' },
+  loadingSpinner: { fontSize: '2rem', marginBottom: '10px', animation: 'pulse 1s infinite' },
+  slackThreadError: { textAlign: 'center', padding: '40px' },
+  errorTitle: { color: '#ff6b6b', fontSize: '1.1rem', marginBottom: '10px' },
+  errorMessage: { color: '#888', fontSize: '0.9rem', marginBottom: '20px' },
+  slackThreadContainer: { width: '100%', maxWidth: '800px', margin: '0 auto' },
+  slackThreadHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', paddingBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' },
+  slackThreadBadge: { background: 'rgba(0,204,255,0.15)', color: '#00ccff', padding: '5px 12px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 600 },
+  slackOpenLink: { color: '#00ccff', fontSize: '0.85rem', textDecoration: 'none', opacity: 0.8, transition: 'opacity 0.2s' },
+  slackMessages: { display: 'flex', flexDirection: 'column', gap: '15px', maxHeight: '60vh', overflowY: 'auto', padding: '10px' },
+  slackMessage: { background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '12px', border: '1px solid rgba(255,255,255,0.05)' },
+  slackMessageHeader: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' },
+  slackAvatar: { width: '36px', height: '36px', borderRadius: '6px' },
+  slackAvatarPlaceholder: { width: '36px', height: '36px', borderRadius: '6px', background: 'rgba(0,204,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00ccff', fontWeight: 700, fontSize: '1.1rem' },
+  slackMessageInfo: { display: 'flex', flexDirection: 'column' },
+  slackUsername: { fontWeight: 600, color: '#fff', fontSize: '0.95rem' },
+  slackTimestamp: { fontSize: '0.75rem', color: '#666' },
+  slackMessageText: { color: '#e0e0e0', fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' },
 };
 
 export default AgentOpsHackathon;
