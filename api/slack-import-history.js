@@ -57,6 +57,18 @@ export default async function handler(req, res) {
     const messages = await fetchAllChannelMessages(TARGET_CHANNEL, SLACK_BOT_TOKEN);
     console.log(`📨 Found ${messages.length} messages to process`);
 
+    // Pre-fetch all unique user info in parallel (OPTIMIZATION)
+    const uniqueUserIds = [...new Set(messages
+      .filter(m => !m.subtype && !m.bot_id && m.user)
+      .map(m => m.user))];
+    console.log(`👤 Pre-fetching ${uniqueUserIds.length} unique users in parallel...`);
+
+    const userCache = {};
+    await Promise.all(uniqueUserIds.map(async (userId) => {
+      userCache[userId] = await fetchSlackUser(userId, SLACK_BOT_TOKEN);
+    }));
+    console.log(`✅ All users fetched, starting message processing...`);
+
     // Process each message
     const results = {
       total: messages.length,
@@ -69,9 +81,6 @@ export default async function handler(req, res) {
 
     // Track changes per member
     const memberUpdates = {};
-
-    // Cache Slack user lookups to avoid repeated API calls
-    const userCache = {};
 
     for (const message of messages) {
       try {
@@ -186,11 +195,15 @@ async function fetchAllChannelMessages(channelId, token) {
 async function processHistoricalMessageOptimized(message, token, membersArray, memberUpdates, userCache) {
   const { user: slackUserId, text, ts, files } = message;
 
-  // Get user info from Slack (with caching)
-  if (!userCache[slackUserId]) {
-    userCache[slackUserId] = await fetchSlackUser(slackUserId, token);
+  // Get user info from pre-fetched cache (all users fetched upfront in parallel)
+  let userInfo = userCache[slackUserId];
+
+  // Fallback: fetch if somehow not in cache (should never happen with prefetch)
+  if (!userInfo && slackUserId) {
+    console.warn(`User ${slackUserId} not in cache, fetching...`);
+    userInfo = await fetchSlackUser(slackUserId, token);
+    userCache[slackUserId] = userInfo;
   }
-  const userInfo = userCache[slackUserId];
 
   if (!userInfo) {
     return { success: false, reason: 'Could not fetch user info' };
