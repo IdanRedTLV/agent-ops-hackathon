@@ -70,6 +70,9 @@ export default async function handler(req, res) {
     // Track changes per member
     const memberUpdates = {};
 
+    // Cache Slack user lookups to avoid repeated API calls
+    const userCache = {};
+
     for (const message of messages) {
       try {
         // Skip bot messages and messages without a user
@@ -82,7 +85,8 @@ export default async function handler(req, res) {
           message,
           SLACK_BOT_TOKEN,
           membersArray,
-          memberUpdates
+          memberUpdates,
+          userCache
         );
 
         if (result.success) {
@@ -179,11 +183,15 @@ async function fetchAllChannelMessages(channelId, token) {
   return messages;
 }
 
-async function processHistoricalMessageOptimized(message, token, membersArray, memberUpdates) {
+async function processHistoricalMessageOptimized(message, token, membersArray, memberUpdates, userCache) {
   const { user: slackUserId, text, ts, files } = message;
 
-  // Get user info from Slack
-  const userInfo = await fetchSlackUser(slackUserId, token);
+  // Get user info from Slack (with caching)
+  if (!userCache[slackUserId]) {
+    userCache[slackUserId] = await fetchSlackUser(slackUserId, token);
+  }
+  const userInfo = userCache[slackUserId];
+
   if (!userInfo) {
     return { success: false, reason: 'Could not fetch user info' };
   }
