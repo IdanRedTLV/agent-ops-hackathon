@@ -370,7 +370,11 @@ const AgentOpsHackathon = () => {
   // Detect media type from URL
   const detectMediaType = (url) => {
     const lowerUrl = url.toLowerCase();
-    
+
+    // Slack
+    if (lowerUrl.includes('slack.com') || lowerUrl.includes('slack-files.com')) {
+      return 'slack';
+    }
     // YouTube
     if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
       return 'youtube';
@@ -414,6 +418,20 @@ const AgentOpsHackathon = () => {
       return vimeoId ? `https://player.vimeo.com/video/${vimeoId[1]}` : url;
     }
     return url;
+  };
+
+  // Get thumbnail URL for video previews
+  const getVideoThumbnail = (url, type) => {
+    if (type === 'youtube') {
+      const videoId = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      return videoId ? `https://img.youtube.com/vi/${videoId[1]}/mqdefault.jpg` : null;
+    }
+    if (type === 'loom') {
+      const loomId = url.match(/loom\.com\/share\/([a-zA-Z0-9]+)/);
+      return loomId ? `https://cdn.loom.com/sessions/thumbnails/${loomId[1]}-00001.jpg` : null;
+    }
+    // Vimeo thumbnails require API call, so we'll just show a placeholder
+    return null;
   };
 
   const removeWorkflow = (index) => {
@@ -672,18 +690,20 @@ const AgentOpsHackathon = () => {
                         <div style={styles.workflowThumbnail}>
                           {media.type === 'image' ? (
                             <img src={media.url} alt="" style={styles.workflowThumbMedia} />
+                          ) : ['youtube', 'loom'].includes(media.type) && getVideoThumbnail(media.url, media.type) ? (
+                            <img src={getVideoThumbnail(media.url, media.type)} alt="" style={styles.workflowThumbMedia} />
                           ) : (
                             <div style={styles.workflowThumbPlaceholder}>
                               <span style={styles.workflowThumbIcon}>
-                                {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : media.type === 'vimeo' ? '🎬' : '🔗'}
+                                {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : media.type === 'vimeo' ? '🎬' : media.type === 'slack' ? '💬' : '🔗'}
                               </span>
                               <span style={styles.workflowThumbLabel}>
-                                {media.type === 'youtube' ? 'YouTube' : media.type === 'loom' ? 'Loom' : media.type === 'vimeo' ? 'Vimeo' : 'View'}
+                                {media.type === 'youtube' ? 'YouTube' : media.type === 'loom' ? 'Loom' : media.type === 'vimeo' ? 'Vimeo' : media.type === 'slack' ? 'Slack' : 'View'}
                               </span>
                             </div>
                           )}
                           <div style={styles.workflowMediaIcon}>
-                            {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : media.type === 'image' ? '🖼️' : '🔗'}
+                            {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : media.type === 'image' ? '🖼️' : media.type === 'slack' ? '💬' : '🔗'}
                           </div>
                         </div>
                       )}
@@ -750,9 +770,11 @@ const AgentOpsHackathon = () => {
                         <div style={styles.workflowItemThumb}>
                           {media.type === 'image' ? (
                             <img src={media.url} alt="" style={styles.workflowItemThumbMedia} />
+                          ) : ['youtube', 'loom'].includes(media.type) && getVideoThumbnail(media.url, media.type) ? (
+                            <img src={getVideoThumbnail(media.url, media.type)} alt="" style={styles.workflowItemThumbMedia} />
                           ) : (
                             <div style={styles.workflowItemThumbIcon}>
-                              {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : '🔗'}
+                              {media.type === 'youtube' ? '📺' : media.type === 'loom' ? '🎥' : media.type === 'slack' ? '💬' : '🔗'}
                             </div>
                           )}
                         </div>
@@ -780,6 +802,7 @@ const AgentOpsHackathon = () => {
                 />
                 {workflowMediaUrl && (
                   <div style={styles.mediaPreviewHint}>
+                    {detectMediaType(workflowMediaUrl) === 'slack' && '💬 Slack media detected'}
                     {detectMediaType(workflowMediaUrl) === 'youtube' && '📺 YouTube video detected'}
                     {detectMediaType(workflowMediaUrl) === 'loom' && '🎥 Loom video detected'}
                     {detectMediaType(workflowMediaUrl) === 'vimeo' && '🎬 Vimeo video detected'}
@@ -963,7 +986,7 @@ const AgentOpsHackathon = () => {
               {(() => {
                 const media = getWorkflowMedia(viewingWorkflow);
                 if (!media) return null;
-                
+
                 // YouTube, Loom, Vimeo - use iframe embed
                 if (['youtube', 'loom', 'vimeo'].includes(media.type)) {
                   return (
@@ -977,36 +1000,53 @@ const AgentOpsHackathon = () => {
                     />
                   );
                 }
-                
+
                 // Direct video file
                 if (media.type === 'video') {
                   return (
-                    <video 
-                      src={media.url} 
+                    <video
+                      src={media.url}
                       style={styles.mediaViewerVideo}
                       controls
                       autoPlay
                     />
                   );
                 }
-                
+
                 // Image
                 if (media.type === 'image') {
                   return (
-                    <img 
-                      src={media.url} 
+                    <img
+                      src={media.url}
                       alt={getWorkflowName(viewingWorkflow)}
                       style={styles.mediaViewerImage}
                     />
                   );
                 }
-                
+
+                // Slack media - show link button with Slack branding
+                if (media.type === 'slack') {
+                  return (
+                    <div style={styles.mediaViewerLink}>
+                      <a
+                        href={media.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={styles.mediaViewerLinkBtn}
+                      >
+                        💬 Open in Slack
+                      </a>
+                      <p style={styles.mediaViewerLinkHint}>Opens in new tab</p>
+                    </div>
+                  );
+                }
+
                 // Google Drive or other links - show link button
                 return (
                   <div style={styles.mediaViewerLink}>
-                    <a 
-                      href={media.url} 
-                      target="_blank" 
+                    <a
+                      href={media.url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       style={styles.mediaViewerLinkBtn}
                     >
