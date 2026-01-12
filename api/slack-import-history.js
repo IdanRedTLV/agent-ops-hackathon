@@ -38,7 +38,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log('🚀 Starting historical message import...');
+    console.log('🚀 Starting historical message import (OPTIMIZED v2.0)...');
 
     // Fetch team data ONCE at the start
     const db = getDatabase();
@@ -113,8 +113,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // Batch update all members at once
-    console.log('💾 Saving all workflows to Firebase...');
+    // Batch update all members at once (OPTIMIZED - single write operation)
+    console.log('💾 Saving all workflows to Firebase in single batch write...');
     for (const [memberId, workflows] of Object.entries(memberUpdates)) {
       const memberIndex = membersArray.findIndex(m => m.id === parseInt(memberId));
       if (memberIndex !== -1) {
