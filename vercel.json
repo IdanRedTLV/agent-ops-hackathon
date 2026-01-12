@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/slack-import-history.js": {
+      "maxDuration": 60
+    }
+  }
+}
