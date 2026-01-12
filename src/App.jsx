@@ -25,6 +25,8 @@ const AgentOpsHackathon = () => {
   const [newWorkflow, setNewWorkflow] = useState('');
   const [teamMembers, setTeamMembers] = useState([]);
   const [lastSync, setLastSync] = useState(null);
+  const [milestones, setMilestones] = useState([]);
+  const [editingMilestone, setEditingMilestone] = useState(null);
 
   // Admin emails - these users can edit anyone's profile
   const adminEmails = [
@@ -34,13 +36,15 @@ const AgentOpsHackathon = () => {
 
   const isAdmin = user && adminEmails.includes(user.email?.toLowerCase());
 
-  const milestones = [
+  const defaultMilestones = [
     { id: 1, date: 'JAN 7', title: 'PREPARATION', desc: 'Course + Reading', xp: 100, icon: '📚' },
     { id: 2, date: 'JAN 8', title: 'WORKSHOP', desc: 'Live Workflow Demo', xp: 150, icon: '🎮' },
     { id: 3, date: 'JAN 12', title: 'DEMO PACK', desc: '3 Workflows Submitted', xp: 300, icon: '📦' },
     { id: 4, date: 'JAN 22', title: 'CHECKPOINT', desc: 'Mid-Period Review', xp: 200, icon: '🎯' },
     { id: 5, date: 'FEB 1', title: 'FINAL EVAL', desc: 'Full Submission', xp: 500, icon: '🏆' },
   ];
+
+  const milestoneIcons = ['📚', '🎮', '📦', '🎯', '🏆', '🚀', '⭐', '💎', '🔥', '⚡', '🎨', '💻', '📊', '🧠', '🎪'];
 
   const defaultTeamMembers = [
     { id: 1, name: 'Alex Artemov', role: 'Android Lead', avatar: '🤖', completedMilestones: [], workflows: [], streak: 0, email: '' },
@@ -108,6 +112,26 @@ const AgentOpsHackathon = () => {
     return () => unsubscribe();
   }, []);
 
+  // Subscribe to milestones updates
+  useEffect(() => {
+    const milestonesRef = ref(database, 'hackathon/milestones');
+    const unsubscribe = onValue(milestonesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const milestonesArray = Array.isArray(data) ? data : Object.values(data);
+        setMilestones(milestonesArray);
+      } else {
+        // Initialize milestones in Firebase
+        set(milestonesRef, defaultMilestones);
+        setMilestones(defaultMilestones);
+      }
+    }, (error) => {
+      console.error('Milestones Firebase error:', error);
+      setMilestones(defaultMilestones);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const initializeDatabase = async () => {
     try {
       const teamRef = ref(database, 'hackathon/team');
@@ -128,6 +152,24 @@ const AgentOpsHackathon = () => {
       console.error('Error saving to Firebase:', error);
       localStorage.setItem('hackathon-team-data', JSON.stringify(data));
     }
+  };
+
+  const saveMilestones = async (data) => {
+    try {
+      const milestonesRef = ref(database, 'hackathon/milestones');
+      await set(milestonesRef, data);
+    } catch (error) {
+      console.error('Error saving milestones:', error);
+    }
+  };
+
+  const updateMilestone = async (updatedMilestone) => {
+    const newMilestones = milestones.map(m => 
+      m.id === updatedMilestone.id ? updatedMilestone : m
+    );
+    setMilestones(newMilestones);
+    await saveMilestones(newMilestones);
+    setEditingMilestone(null);
   };
 
   // Auth handlers
@@ -204,8 +246,9 @@ const AgentOpsHackathon = () => {
 
   const calculateXP = (completedMilestones) => {
     if (!completedMilestones) return 0;
+    const currentMilestones = milestones.length > 0 ? milestones : defaultMilestones;
     return completedMilestones.reduce((total, mId) => {
-      const milestone = milestones.find(m => m.id === mId);
+      const milestone = currentMilestones.find(m => m.id === mId);
       return total + (milestone ? milestone.xp : 0);
     }, 0);
   };
@@ -447,14 +490,27 @@ const AgentOpsHackathon = () => {
         </section>
 
         <section style={styles.timeline}>
-          <h2 style={styles.sectionTitle}><span style={styles.sectionIcon}>📍</span> MISSION TIMELINE</h2>
+          <h2 style={styles.sectionTitle}>
+            <span style={styles.sectionIcon}>📍</span> MISSION TIMELINE
+            {isAdmin && <span style={styles.sectionHint}>Click milestone to edit</span>}
+          </h2>
           <div style={styles.timelineTrack}>
-            {milestones.map((milestone, idx) => {
+            {(milestones.length > 0 ? milestones : defaultMilestones).map((milestone, idx) => {
               const completedCount = membersWithStats.filter(m => m.completedMilestones?.includes(milestone.id)).length;
-              const progress = (completedCount / membersWithStats.length) * 100;
+              const progress = membersWithStats.length > 0 ? (completedCount / membersWithStats.length) * 100 : 0;
               const isActive = idx === 2;
               return (
-                <div key={milestone.id} style={{...styles.milestoneCard, ...(isActive ? styles.milestoneActive : {}), animationDelay: `${idx * 0.15}s`}}>
+                <div 
+                  key={milestone.id} 
+                  style={{
+                    ...styles.milestoneCard, 
+                    ...(isActive ? styles.milestoneActive : {}), 
+                    animationDelay: `${idx * 0.15}s`,
+                    cursor: isAdmin ? 'pointer' : 'default'
+                  }}
+                  onClick={() => isAdmin && setEditingMilestone({...milestone})}
+                >
+                  {isAdmin && <div style={styles.milestoneEditHint}>✏️</div>}
                   <div style={styles.milestoneIcon}>{milestone.icon}</div>
                   <div style={styles.milestoneDate}>{milestone.date}</div>
                   <div style={styles.milestoneTitle}>{milestone.title}</div>
@@ -537,7 +593,7 @@ const AgentOpsHackathon = () => {
             </div>
             <div style={styles.modalSection}>
               <h4 style={styles.modalSectionTitle}>📍 MILESTONES</h4>
-              <div style={styles.modalMilestones}>{milestones.map(m => <div key={m.id} style={{...styles.modalMilestone, opacity: selectedMember.completedMilestones?.includes(m.id) ? 1 : 0.4}}><span>{selectedMember.completedMilestones?.includes(m.id) ? '✅' : '⬜'}</span><span>{m.title}</span><span style={styles.milestoneXPSmall}>+{m.xp} XP</span></div>)}</div>
+              <div style={styles.modalMilestones}>{(milestones.length > 0 ? milestones : defaultMilestones).map(m => <div key={m.id} style={{...styles.modalMilestone, opacity: selectedMember.completedMilestones?.includes(m.id) ? 1 : 0.4}}><span>{selectedMember.completedMilestones?.includes(m.id) ? '✅' : '⬜'}</span><span>{m.title}</span><span style={styles.milestoneXPSmall}>+{m.xp} XP</span></div>)}</div>
             </div>
             {canEdit(selectedMember) && (
               <button style={styles.editFromViewBtn} onClick={() => { const baseMember = teamMembers.find(m => m.id === selectedMember.id); setEditingMember({...baseMember}); setSelectedMember(null); }}>
@@ -560,7 +616,7 @@ const AgentOpsHackathon = () => {
             <div style={styles.editSection}>
               <h4 style={styles.editSectionTitle}>📍 MILESTONES COMPLETED</h4>
               <div style={styles.milestoneToggles}>
-                {milestones.map(m => (
+                {(milestones.length > 0 ? milestones : defaultMilestones).map(m => (
                   <button key={m.id} style={{...styles.milestoneToggle, ...(editingMember.completedMilestones?.includes(m.id) ? styles.milestoneToggleActive : {})}} onClick={() => toggleMilestone(m.id)}>
                     <span style={styles.toggleIcon}>{editingMember.completedMilestones?.includes(m.id) ? '✅' : '⬜'}</span>
                     <span style={styles.toggleInfo}><span style={styles.toggleTitle}>{m.title}</span><span style={styles.toggleDate}>{m.date} • +{m.xp} XP</span></span>
@@ -593,11 +649,93 @@ const AgentOpsHackathon = () => {
         </div>
       )}
 
+      {/* Edit Milestone Modal (Admin only) */}
+      {editingMilestone && isAdmin && (
+        <div style={styles.modalOverlay} onClick={() => setEditingMilestone(null)}>
+          <div style={{...styles.modal, ...styles.editModal}} onClick={e => e.stopPropagation()}>
+            <button style={styles.modalClose} onClick={() => setEditingMilestone(null)}>✕</button>
+            <div style={styles.modalHeader}>
+              <span style={styles.modalAvatar}>{editingMilestone.icon}</span>
+              <div><h3 style={styles.modalName}>Edit Milestone</h3><p style={styles.modalRole}>Admin Only</p></div>
+            </div>
+            
+            <div style={styles.editSection}>
+              <h4 style={styles.editSectionTitle}>📅 DATE</h4>
+              <input
+                type="text"
+                value={editingMilestone.date}
+                onChange={(e) => setEditingMilestone({...editingMilestone, date: e.target.value})}
+                style={styles.milestoneInput}
+                placeholder="e.g. JAN 15"
+              />
+            </div>
+
+            <div style={styles.editSection}>
+              <h4 style={styles.editSectionTitle}>📝 TITLE</h4>
+              <input
+                type="text"
+                value={editingMilestone.title}
+                onChange={(e) => setEditingMilestone({...editingMilestone, title: e.target.value.toUpperCase()})}
+                style={styles.milestoneInput}
+                placeholder="e.g. WORKSHOP"
+              />
+            </div>
+
+            <div style={styles.editSection}>
+              <h4 style={styles.editSectionTitle}>📋 DESCRIPTION</h4>
+              <input
+                type="text"
+                value={editingMilestone.desc}
+                onChange={(e) => setEditingMilestone({...editingMilestone, desc: e.target.value})}
+                style={styles.milestoneInput}
+                placeholder="e.g. Live Workflow Demo"
+              />
+            </div>
+
+            <div style={styles.editSection}>
+              <h4 style={styles.editSectionTitle}>⭐ XP REWARD</h4>
+              <input
+                type="number"
+                value={editingMilestone.xp}
+                onChange={(e) => setEditingMilestone({...editingMilestone, xp: parseInt(e.target.value) || 0})}
+                style={styles.milestoneInput}
+                placeholder="e.g. 100"
+                min="0"
+                step="50"
+              />
+            </div>
+
+            <div style={styles.editSection}>
+              <h4 style={styles.editSectionTitle}>🎨 ICON</h4>
+              <div style={styles.iconPicker}>
+                {milestoneIcons.map(icon => (
+                  <button
+                    key={icon}
+                    style={{
+                      ...styles.iconOption,
+                      ...(editingMilestone.icon === icon ? styles.iconOptionSelected : {})
+                    }}
+                    onClick={() => setEditingMilestone({...editingMilestone, icon})}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.editActions}>
+              <button style={styles.cancelBtn} onClick={() => setEditingMilestone(null)}>Cancel</button>
+              <button style={styles.saveBtn} onClick={() => updateMilestone(editingMilestone)}>💾 Save Milestone</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <footer style={styles.footer}>
         <div style={styles.footerStat}><span style={styles.footerValue}>{membersWithStats.length}</span><span style={styles.footerLabel}>AGENTS</span></div>
         <div style={styles.footerStat}><span style={styles.footerValue}>{membersWithStats.reduce((a, m) => a + (m.workflows?.length || 0), 0)}</span><span style={styles.footerLabel}>WORKFLOWS</span></div>
         <div style={styles.footerStat}><span style={styles.footerValue}>{membersWithStats.reduce((a, m) => a + m.xp, 0)}</span><span style={styles.footerLabel}>TOTAL XP</span></div>
-        <div style={styles.footerStat}><span style={styles.footerValue}>{Math.round(membersWithStats.reduce((a, m) => a + (m.completedMilestones?.length || 0), 0) / (membersWithStats.length * milestones.length) * 100)}%</span><span style={styles.footerLabel}>PROGRESS</span></div>
+        <div style={styles.footerStat}><span style={styles.footerValue}>{Math.round(membersWithStats.reduce((a, m) => a + (m.completedMilestones?.length || 0), 0) / (membersWithStats.length * (milestones.length || defaultMilestones.length)) * 100) || 0}%</span><span style={styles.footerLabel}>PROGRESS</span></div>
       </footer>
     </div>
   );
@@ -674,7 +812,7 @@ const styles = {
   leaderLevel: { fontSize: '0.65rem', color: '#666' },
   timeline: { background: 'rgba(20, 20, 35, 0.8)', border: '1px solid rgba(0, 204, 255, 0.2)', borderRadius: '12px', padding: '20px', backdropFilter: 'blur(10px)' },
   timelineTrack: { display: 'flex', gap: '15px', overflowX: 'auto', padding: '10px 0' },
-  milestoneCard: { minWidth: '140px', background: 'rgba(30, 30, 50, 0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '15px', textAlign: 'center', transition: 'all 0.3s ease', animation: 'slideIn 0.5s ease forwards', opacity: 0 },
+  milestoneCard: { minWidth: '140px', background: 'rgba(30, 30, 50, 0.6)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '15px', textAlign: 'center', transition: 'all 0.3s ease', animation: 'slideIn 0.5s ease forwards', opacity: 0, position: 'relative' },
   milestoneActive: { border: '2px solid #00ff88', animation: 'slideIn 0.5s ease forwards, borderGlow 2s infinite', boxShadow: '0 0 20px rgba(0,255,136,0.3)' },
   milestoneIcon: { fontSize: '2rem', marginBottom: '8px' },
   milestoneDate: { fontFamily: '"Share Tech Mono", monospace', fontSize: '0.7rem', color: '#00ccff', letterSpacing: '0.1em' },
@@ -684,6 +822,11 @@ const styles = {
   milestoneProgress: { height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', margin: '10px 0 5px', overflow: 'hidden' },
   milestoneProgressBar: { height: '100%', background: 'linear-gradient(90deg, #00ff88, #00ccff)', borderRadius: '2px', transition: 'width 1s ease' },
   milestoneCount: { fontSize: '0.65rem', color: '#666' },
+  milestoneEditHint: { position: 'absolute', top: '5px', right: '5px', fontSize: '0.7rem', opacity: 0.5 },
+  milestoneInput: { width: '100%', padding: '12px 15px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(0,255,136,0.3)', borderRadius: '8px', color: '#fff', fontSize: '1rem', fontFamily: '"Rajdhani", sans-serif', boxSizing: 'border-box' },
+  iconPicker: { display: 'flex', flexWrap: 'wrap', gap: '8px' },
+  iconOption: { width: '45px', height: '45px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', background: 'rgba(255,255,255,0.05)', border: '2px solid transparent', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s ease' },
+  iconOptionSelected: { background: 'rgba(0,255,136,0.2)', borderColor: '#00ff88' },
   teamSection: { background: 'rgba(20, 20, 35, 0.8)', border: '1px solid rgba(0, 204, 255, 0.2)', borderRadius: '12px', padding: '20px', backdropFilter: 'blur(10px)' },
   teamGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px' },
   memberCard: { background: 'linear-gradient(145deg, rgba(30,30,50,0.8) 0%, rgba(20,20,35,0.9) 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '15px', transition: 'all 0.3s ease', animation: 'slideIn 0.5s ease forwards', opacity: 0, position: 'relative' },
