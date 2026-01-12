@@ -40,6 +40,19 @@ export default async function handler(req, res) {
   try {
     console.log('🚀 Starting historical message import...');
 
+    // Fetch team data ONCE at the start
+    const db = getDatabase();
+    const teamRef = db.ref('hackathon/team');
+    const teamSnapshot = await teamRef.once('value');
+    const teamData = teamSnapshot.val();
+
+    if (!teamData) {
+      return res.status(500).json({ error: 'No team data found in Firebase' });
+    }
+
+    const membersArray = Array.isArray(teamData) ? teamData : Object.values(teamData);
+    console.log(`👥 Loaded ${membersArray.length} team members from Firebase`);
+
     // Fetch all messages from the channel
     const messages = await fetchAllChannelMessages(TARGET_CHANNEL, SLACK_BOT_TOKEN);
     console.log(`📨 Found ${messages.length} messages to process`);
@@ -54,6 +67,9 @@ export default async function handler(req, res) {
       details: []
     };
 
+    // Track changes per member
+    const memberUpdates = {};
+
     for (const message of messages) {
       try {
         // Skip bot messages and messages without a user
@@ -62,14 +78,20 @@ export default async function handler(req, res) {
           continue;
         }
 
-        const result = await processHistoricalMessage(message, SLACK_BOT_TOKEN);
+        const result = await processHistoricalMessageOptimized(
+          message,
+          SLACK_BOT_TOKEN,
+          membersArray,
+          memberUpdates
+        );
 
         if (result.success) {
           results.workflows_created++;
           results.details.push({
             user: result.userName,
             workflow: result.workflowName,
-            status: 'created'
+            status: 'created',
+            attachments: result.attachments || 0
           });
         } else {
           results.skipped++;
@@ -87,6 +109,16 @@ export default async function handler(req, res) {
       }
     }
 
+    // Batch update all members at once
+    console.log('💾 Saving all workflows to Firebase...');
+    for (const [memberId, workflows] of Object.entries(memberUpdates)) {
+      const memberIndex = membersArray.findIndex(m => m.id === parseInt(memberId));
+      if (memberIndex !== -1) {
+        membersArray[memberIndex].workflows = workflows;
+      }
+    }
+
+    await teamRef.set(membersArray);
     console.log('✅ Import complete!', results);
 
     return res.status(200).json({
@@ -147,6 +179,66 @@ async function fetchAllChannelMessages(channelId, token) {
   return messages;
 }
 
+async function processHistoricalMessageOptimized(message, token, membersArray, memberUpdates) {
+  const { user: slackUserId, text, ts, files } = message;
+
+  // Get user info from Slack
+  const userInfo = await fetchSlackUser(slackUserId, token);
+  if (!userInfo) {
+    return { success: false, reason: 'Could not fetch user info' };
+  }
+
+  // Find matching team member (in-memory, no Firebase call)
+  const teamMember = membersArray.find(m =>
+    m.email && m.email.toLowerCase() === userInfo.email?.toLowerCase()
+  );
+
+  if (!teamMember) {
+    return {
+      success: false,
+      reason: `No team member found for email: ${userInfo.email}`,
+      userName: userInfo.name
+    };
+  }
+
+  // Create workflow data
+  const workflowName = extractWorkflowName(text);
+  const slackThreadUrl = `https://tap-mobile.slack.com/archives/${TARGET_CHANNEL}/p${ts.replace('.', '')}`;
+  const attachments = extractAttachments(files);
+
+  const workflowData = {
+    name: workflowName,
+    mediaUrl: slackThreadUrl,
+    mediaType: 'slack',
+    createdAt: Date.now(),
+    attachments: attachments.length > 0 ? attachments : undefined,
+  };
+
+  // Get current workflows for this member (from updates or original data)
+  const currentWorkflows = memberUpdates[teamMember.id] || teamMember.workflows || [];
+
+  // Check if workflow already exists
+  const exists = currentWorkflows.some(w => w.mediaUrl === slackThreadUrl);
+  if (exists) {
+    return {
+      success: false,
+      reason: 'Workflow already exists',
+      userName: teamMember.name
+    };
+  }
+
+  // Add to member updates (in-memory, no Firebase call yet)
+  memberUpdates[teamMember.id] = [...currentWorkflows, workflowData];
+
+  return {
+    success: true,
+    userName: teamMember.name,
+    workflowName,
+    attachments: attachments.length
+  };
+}
+
+// Old function - keeping for reference
 async function processHistoricalMessage(message, token) {
   const { user: slackUserId, text, ts, channel, files } = message;
 
